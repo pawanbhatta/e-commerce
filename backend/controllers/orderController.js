@@ -15,11 +15,12 @@ const addOrderItems = asyncHandler(async (req, res) => {
     totalPrice,
   } = req.body;
 
+  console.log("req order : ", req.body);
   if (orderItems && orderItems.length === 0) {
     res.status(400);
     throw new Error("No order items");
-    return;
   } else {
+    console.log("req order after : ", req.user);
     const order = new Order({
       orderItems,
       user: req.user._id,
@@ -31,7 +32,10 @@ const addOrderItems = asyncHandler(async (req, res) => {
       totalPrice,
     });
 
+    console.log("before order : " + order);
+
     const createdOrder = await order.save();
+    console.log("after order : " + createdOrder);
 
     res.status(201).json(createdOrder);
   }
