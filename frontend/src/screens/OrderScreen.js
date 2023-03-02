@@ -14,10 +14,22 @@ import {
 import {
   ORDER_PAY_RESET,
   ORDER_DELIVER_RESET,
+  ORDER_PAY_SUCCESS,
 } from "../constants/orderConstants";
+import { useLocation } from "react-router-dom";
+import queryString from "query-string";
 
 const OrderScreen = ({ match, history }) => {
   const orderId = match.params.id;
+
+  const data = useLocation();
+  const params = queryString.parse(data.search);
+  const { oid, amt, refId, fail } = params;
+  console.log("Esewa Data:::", data);
+  let successPay = false;
+  if (oid?.length > 0 && amt?.length > 0 && refId?.length > 0) {
+    successPay = true;
+  }
 
   const [sdkReady, setSdkReady] = useState(false);
 
@@ -27,7 +39,7 @@ const OrderScreen = ({ match, history }) => {
   const { order, loading, error } = orderDetails;
 
   const orderPay = useSelector((state) => state.orderPay);
-  const { loading: loadingPay, success: successPay } = orderPay;
+  const { loading: loadingPay, success: successPays } = orderPay;
 
   const orderDeliver = useSelector((state) => state.orderDeliver);
   const { loading: loadingDeliver, success: successDeliver } = orderDeliver;
@@ -46,48 +58,45 @@ const OrderScreen = ({ match, history }) => {
     );
   }
 
+  const cart = useSelector((state) => state.cart);
+  const { paymentMethod } = cart;
+
   useEffect(() => {
     if (!userInfo) {
       history.push("/login");
     }
-
-    const addPayPalScript = async () => {
-      const { data: clientId } = await axios.get("/api/config/paypal");
-      const script = document.createElement("script");
-      script.type = "text/javascript";
-      script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}`;
-      script.async = true;
-      script.onload = () => {
-        setSdkReady(true);
-      };
-      document.body.appendChild(script);
-    };
-
-    if (!order || successPay || successDeliver || order._id !== orderId) {
+    if (successPay) {
+      successPaymentHandler({
+        id: refId,
+        status: oid,
+        update_time: Date.now(),
+        payer: { email_address: userInfo.email },
+      });
+    }
+    if (
+      !order ||
+      // || successPay || successDeliver
+      order._id !== orderId
+    ) {
       dispatch({ type: ORDER_PAY_RESET });
       dispatch({ type: ORDER_DELIVER_RESET });
       dispatch(getOrderDetails(orderId));
     } else if (!order.isPaid) {
-      if (!window.paypal) {
-        addPayPalScript();
-      } else {
-        setSdkReady(true);
-      }
+      setSdkReady(true);
     }
   }, [dispatch, orderId, successPay, successDeliver, order]);
 
   const successPaymentHandler = (paymentResult) => {
     console.log(paymentResult);
     dispatch(payOrder(orderId, paymentResult));
+    history.push(data.pathname);
   };
 
   const deliverHandler = () => {
     dispatch(deliverOrder(order));
   };
 
-  const cart = useSelector((state) => state.cart);
-  const { paymentMethod } = cart;
-
+  console.log(order);
   return loading ? (
     <Loader />
   ) : error ? (
@@ -203,7 +212,7 @@ const OrderScreen = ({ match, history }) => {
                   {loadingPay && <Loader />}
                   {!sdkReady ? (
                     <Loader />
-                  ) : paymentMethod === "Esewa" ? (
+                  ) : (
                     <div
                       style={{
                         display: "flex",
@@ -215,20 +224,32 @@ const OrderScreen = ({ match, history }) => {
                         action="https://uat.esewa.com.np/epay/main"
                         method="POST"
                       >
-                        <input value="100" name="tAmt" type="hidden" />
-                        <input value="100" name="amt" type="hidden" />
-                        <input value="0" name="txAmt" type="hidden" />
+                        <input
+                          value={order.totalPrice}
+                          name="tAmt"
+                          type="hidden"
+                        />
+                        <input
+                          value={order.itemsPrice}
+                          name="amt"
+                          type="hidden"
+                        />
+                        <input
+                          value={order.taxPrice}
+                          name="txAmt"
+                          type="hidden"
+                        />
                         <input value="0" name="psc" type="hidden" />
                         <input value="0" name="pdc" type="hidden" />
-                        <input value="epay_payment" name="scd" type="hidden" />
-                        <input value="paawww" name="pid" type="hidden" />
+                        <input value="EPAYTEST" name="scd" type="hidden" />
+                        <input value={order._id} name="pid" type="hidden" />
                         <input
-                          value="http://localhost:3001/"
+                          value={window.location.href}
                           type="hidden"
                           name="su"
                         />
                         <input
-                          value="http://localhost:3001/"
+                          value={window.location.href + "?fail=true"}
                           type="hidden"
                           name="fu"
                         />
@@ -237,7 +258,7 @@ const OrderScreen = ({ match, history }) => {
                             src="https://i2.wp.com/insidergeeks.com/wp-content/uploads/2020/09/eSewa-Digital-Wallet-Nepal.jpeg"
                             className="card-img-top"
                             style={{
-                              width: "200px",
+                              width: "100px",
                               height: "50px",
                               borderRadius: "5px",
                             }}
@@ -245,11 +266,6 @@ const OrderScreen = ({ match, history }) => {
                         </button>
                       </form>
                     </div>
-                  ) : (
-                    <PayPalButton
-                      amount={order.totalPrice}
-                      onSuccess={successPaymentHandler}
-                    />
                   )}
                 </ListGroup.Item>
               )}
